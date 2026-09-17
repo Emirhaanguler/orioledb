@@ -5,12 +5,27 @@ step s1_begin: BEGIN;
 step s2_begin: BEGIN;
 step s1_insert: INSERT INTO o_iso_test VALUES (1, 's1_veri');
 step s2_status: SELECT orioledb_engine_status();
-ERROR:  function orioledb_engine_status() does not exist
+orioledb_engine_status
+----------------------
+ORIOLEDB_ACTIVE_V1_OK 
+(1 row)
+
 step s1_stats: SELECT orioledb_custom_page_stats('o_iso_test');
-ERROR:  function orioledb_custom_page_stats(unknown) does not exist
+orioledb_custom_page_stats                         
+---------------------------------------------------
+Table: o_iso_test, Engine: orioledb, Status: ONLINE
+(1 row)
+
 step s2_read: SELECT * FROM o_iso_test;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+id|val
+--+---
+(0 rows)
+
 step s1_commit: COMMIT;
 step s2_read: SELECT * FROM o_iso_test;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+id|val    
+--+-------
+ 1|s1_veri
+(1 row)
+
 step s2_commit: COMMIT;

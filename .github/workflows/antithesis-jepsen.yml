@@ -34,7 +34,7 @@ jobs:
     # dispatch remains available in forks for workflow testing, although a fork
     # must configure its own Antithesis secrets before it can launch a run.
     if: github.event_name == 'workflow_dispatch' || github.repository == 'orioledb/orioledb'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:

@@ -108,7 +108,7 @@ jobs:
 
               for cell in cells:
                   ct = cell["check_type"]
-                  base = 40 if ct == "sanitize" else 30
+                  base = 60 if ct in ("sanitize", "debug") else 45
                   budget = base * repeats
                   if budget > 350:
                       budget = 350

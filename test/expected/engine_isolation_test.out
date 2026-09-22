@@ -1,0 +1,31 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s2_begin s1_insert s2_status s1_stats s2_read s1_commit s2_read s2_commit
+step s1_begin: BEGIN;
+step s2_begin: BEGIN;
+step s1_insert: INSERT INTO o_iso_test VALUES (1, 's1_veri');
+step s2_status: SELECT orioledb_engine_status();
+orioledb_engine_status
+----------------------
+ORIOLEDB_ACTIVE_V1_OK 
+(1 row)
+
+step s1_stats: SELECT orioledb_custom_page_stats('o_iso_test');
+orioledb_custom_page_stats                         
+---------------------------------------------------
+Table: o_iso_test, Engine: orioledb, Status: ONLINE
+(1 row)
+
+step s2_read: SELECT * FROM o_iso_test;
+id|val
+--+---
+(0 rows)
+
+step s1_commit: COMMIT;
+step s2_read: SELECT * FROM o_iso_test;
+id|val    
+--+-------
+ 1|s1_veri
+(1 row)
+
+step s2_commit: COMMIT;

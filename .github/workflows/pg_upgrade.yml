@@ -25,7 +25,7 @@ jobs:
           - { old: 16, new: 18 }
           - { old: 17, new: 18 }
 
-    runs-on: ${{ matrix.cpu == 'arm64' && 'blacksmith-8vcpu-ubuntu-2404-arm' || 'blacksmith-8vcpu-ubuntu-2404' }}
+    runs-on: ${{ matrix.cpu == 'arm64' && 'ubuntu-24.04 || 'ubuntu-24.04 }}
 
     env:
       LLVM_VER: 18

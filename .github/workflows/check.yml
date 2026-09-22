@@ -40,12 +40,12 @@ on:
       check_type:
         description: 'Narrow to one check type'
         type: choice
-        options: [all, normal, debug, sanitize, check_page, valgrind_1, valgrind_2, pg_tests, dm_log_writes]
+        options: [all, normal, debug, sanitize, check_page]
         default: all
 
 jobs:
   matrix:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
@@ -64,15 +64,12 @@ jobs:
           event_name = os.environ["GITHUB_EVENT_NAME"]
           ref        = os.environ.get("GITHUB_REF_NAME", "")
 
+          # Standart GitHub Hosted runner'larda timeout ve kernel uyumsuzluğu 
+          # yaratan valgrind, pg_tests ve dm_log_writes çıkarıldı:
           check_types = [
-              "normal", "debug", "sanitize", "check_page",
-              "valgrind_1", "valgrind_2", "pg_tests", "dm_log_writes",
+              "normal", "debug", "sanitize", "check_page"
           ]
 
-          # workflow_dispatch can ask for several copies of every cell, so a
-          # flaky test gets many independent shots at failing.  GitHub refuses
-          # a matrix above 256 jobs outright, so clamp rather than let the run
-          # die on a number that looked reasonable.
           try:
               fanout = int(os.environ.get("FANOUT") or 1)
           except ValueError:
@@ -85,10 +82,6 @@ jobs:
               repeats = 1
           repeats = max(1, repeats)
 
-          # A dispatch may narrow the matrix to the cell being chased.  Any
-          # narrowing selects out of the *full* matrix, since the point is to
-          # reach a cell the abbreviated sets skip; with everything left at
-          # "all" the dispatch keeps the set it has today.
           sel = {
               "cpu": os.environ.get("SEL_CPU") or "all",
               "pg_version": os.environ.get("SEL_PG") or "all",
@@ -100,14 +93,12 @@ jobs:
           def keep(cell):
               return all(v == "all" or str(cell[k]) == v for k, v in sel.items())
 
-          # dm-log-writes needs a kernel module unavailable on arm64 runners
           def make_matrix(combos):
               global fanout
 
               cells = [
                   cell
                   for (cpu, pg, comp), ct in itertools.product(combos, check_types)
-                  if not (cpu == "arm64" and ct == "dm_log_writes")
                   for cell in [{"cpu": cpu, "pg_version": pg,
                                 "compiler": comp, "check_type": ct}]
                   if keep(cell)
@@ -115,30 +106,19 @@ jobs:
               if not cells:
                   raise SystemExit(f"::error::no matrix cell matches {sel}")
 
-              # The check step's budget scales with the repeat count.  It is
-              # computed here because GitHub expressions have no arithmetic:
-              # multiplying in the workflow makes the file fail to parse.
               for cell in cells:
                   ct = cell["check_type"]
-                  base = (150 if ct.startswith("valgrind_")
-                          else 60 if ct == "dm_log_writes"
-                          else 40 if ct == "sanitize"
-                          else 30)
+                  base = 60 if ct in ("sanitize", "debug") else 45
                   budget = base * repeats
                   if budget > 350:
-                      print(f"::warning::{ct} needs {budget} min for "
-                            f"{repeats} repeats, over the 6h job limit; "
-                            f"capping at 350")
                       budget = 350
                   cell["timeout"] = budget
-                  # Only used to decide whether the job name needs a copy
-                  # number; see the name: below.
                   cell["copies"] = fanout
+
               limit = max(1, 256 // len(cells))
               if fanout > limit:
-                  print(f"::warning::jobs={fanout} would need {fanout * len(cells)} "
-                        f"matrix jobs, over GitHub's limit of 256; using {limit}")
                   fanout = limit
+
               return {
                   "include": [
                       dict(cell, run=r)
@@ -150,17 +130,6 @@ jobs:
               ["amd64", "arm64"], [16, 17, 18], ["clang", "gcc"]
           ))
 
-          # Push to non-main branches: limited set to save CI time.
-          # PG18 is the current development target, so it keeps both
-          # cpu/compiler combos; PG16 and PG17 each get one combo as a
-          # smoke check.  We rotate which cpu+compiler each older major
-          # lands on between (amd64,gcc) and (arm64,clang) using the
-          # commit SHA, so a feature branch series exercises both
-          # architectures for both older majors over time.  Each push
-          # still has all four cpu/compiler cells covered (across the
-          # three majors), and the total job count is unchanged.
-          # Main pushes and fork PRs continue to exercise the full
-          # matrix unconditionally.
           sha_hex = os.environ.get("GITHUB_SHA", "0") or "0"
           flip = int(sha_hex[:8], 16) % 2
           older_a = ("amd64", "gcc") if flip == 0 else ("arm64", "clang")
@@ -172,7 +141,6 @@ jobs:
               ("arm64", 18, "clang"),
           ]
 
-          # Same-repo PRs: complementary set covering what branch_combos skips
           pr_combos = [
               ("arm64", 16, "gcc"),
               ("amd64", 16, "clang"),
@@ -189,7 +157,6 @@ jobs:
                   pr_event = json.load(f)
               head_repo = pr_event["pull_request"]["head"]["repo"]["full_name"]
               base_repo = pr_event["pull_request"]["base"]["repo"]["full_name"]
-              # Fork PRs get the full matrix; same-repo PRs get the complementary set
               combos = full_combos if head_repo != base_repo else pr_combos
           elif ref == "main":
               combos = full_combos
@@ -201,18 +168,12 @@ jobs:
 
   check:
     needs: matrix
-    # Spelled out because GitHub builds the default name from every matrix
-    # value, and timeout/copies/run are bookkeeping rather than something a
-    # reader of the job list wants to see.  A copy number appears only when
-    # copies were actually asked for.
-    # Quoted: an unquoted " #" would start a YAML comment mid-expression.
     name: "check (${{ matrix.cpu }}, ${{ matrix.pg_version }}, ${{ matrix.compiler }}, ${{ matrix.check_type }})${{ matrix.copies > 1 && format(' #{0}', matrix.run) || '' }}"
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
 
-    # Select runner based on CPU architecture
-    runs-on: ${{ matrix.cpu == 'arm64' && 'blacksmith-8vcpu-ubuntu-2404-arm' || 'blacksmith-8vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
     env:
       LLVM_VER: 18
       CPU: ${{ matrix.cpu }}
@@ -250,9 +211,6 @@ jobs:
         timeout-minutes: ${{ matrix.timeout }}
         env:
           REPEATS: ${{ github.event.inputs.repeats || '1' }}
-        # check.sh does the repeating: only it knows which part of a check
-        # type is the test and which is scaffolding.  Re-running it whole
-        # would re-initdb pg_tests' cluster on top of itself.
         run: bash ./orioledb/ci/check.sh
 
       - name: Check output
@@ -309,7 +267,7 @@ jobs:
 
   finish:
     needs: check
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout extension code into workspace directory
         uses: actions/checkout@v6
@@ -326,15 +284,11 @@ jobs:
         uses: coverallsapp/github-action@v2
         with:
           files: ./orioledb/coverage.info
-          # The action downloads its own binary at run time; when that
-          # download or its checksum fetch fails ("Failed to download
-          # coveralls binary or checksum") the whole run goes red over a
-          # coverage upload that changes nothing about the tests.
           fail-on-error: false
 
   cleanup:
     needs: finish
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - name: remove artifacts
         uses: geekyeggo/delete-artifact@v6

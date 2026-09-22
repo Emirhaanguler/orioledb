@@ -1,0 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS orioledb;
+SELECT orioledb_engine_status();
+ orioledb_engine_status 
+------------------------
+ ORIOLEDB_ACTIVE_V1_OK
+(1 row)
+

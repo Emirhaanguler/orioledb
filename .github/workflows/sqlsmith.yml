@@ -53,7 +53,7 @@ jobs:
           - { pg_version: 18, check_type: debug }
           - { pg_version: 18, check_type: check_page }
 
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       LLVM_VER: 18
       CPU: amd64
